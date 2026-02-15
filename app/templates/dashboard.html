@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — The Find Brief{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="dashboard__header">
+        <h1 class="dashboard__welcome">Welcome, {{ user.display_name }}</h1>
+        <button class="btn" id="generate-btn"
+                hx-post="/api/pipeline/run"
+                hx-target="#pipeline-status"
+                hx-swap="innerHTML">
+            Generate New Edition
+        </button>
+    </div>
+
+    <div id="pipeline-status"></div>
+
+    <section class="dashboard__history">
+        <h2 class="dashboard__section-title">Edition History</h2>
+        {% if editions %}
+        <div class="edition-list">
+            {% for edition in editions %}
+            <div class="card edition-card">
+                <div class="edition-card__header">
+                    <span class="edition-card__id">Edition #{{ edition.id }}</span>
+                    <span class="edition-card__status edition-card__status--{{ edition.status }}">{{ edition.status }}</span>
+                </div>
+                <div class="edition-card__meta">
+                    <span>Created: {{ edition.created_at }}</span>
+                    {% if edition.approved_by %}
+                    <span>Approved by: {{ edition.approved_by }}</span>
+                    {% endif %}
+                    <a href="/sources/{{ edition.id }}" class="edition-card__link">View Sources</a>
+                    {% if edition.status in ('reviewing', 'approved') %}
+                    <a href="/draft/{{ edition.id }}" class="edition-card__link">View Draft</a>
+                    <a href="/review/{{ edition.id }}" class="edition-card__link">Review</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p class="empty-state__text">No editions yet. Generate your first edition to get started.</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

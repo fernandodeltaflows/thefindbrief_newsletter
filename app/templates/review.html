@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Edition #{{ edition.id }} Review — The Find Brief{% endblock %}
+
+{% block content %}
+<div class="review">
+    <div class="draft-header">
+        <div>
+            <h1 class="draft-header__title">Edition #{{ edition.id }} — Review</h1>
+            <div class="draft-header__meta">
+                <span>Created: {{ edition.created_at }}</span>
+                <span class="edition-card__status edition-card__status--{{ edition.status }}">{{ edition.status }}</span>
+            </div>
+        </div>
+        <div class="draft-header__actions">
+            <a href="/sources/{{ edition.id }}" class="btn btn--secondary">View Sources</a>
+            <a href="/draft/{{ edition.id }}" class="btn btn--secondary">View Draft</a>
+            <a href="/" class="btn">Back to Dashboard</a>
+        </div>
+    </div>
+
+    {% if total_flags is defined and sections %}
+    <div class="compliance-summary{% if total_flags == 0 %} compliance-summary--clean{% endif %}">
+        {% if total_flags > 0 %}
+        <span class="compliance-summary__title">Compliance Scan Results</span>
+        <div class="compliance-summary__counts">
+            {% if flag_counts.get('BLOCK', 0) > 0 %}
+            <span class="compliance-summary__item">
+                <span class="compliance-summary__dot compliance-summary__dot--block"></span>
+                <span class="compliance-summary__value">{{ flag_counts['BLOCK'] }}</span>
+                <span class="compliance-summary__label">Block</span>
+            </span>
+            {% endif %}
+            {% if flag_counts.get('MANDATORY_REVIEW', 0) > 0 %}
+            <span class="compliance-summary__item">
+                <span class="compliance-summary__dot compliance-summary__dot--mandatory-review"></span>
+                <span class="compliance-summary__value">{{ flag_counts['MANDATORY_REVIEW'] }}</span>
+                <span class="compliance-summary__label">Review</span>
+            </span>
+            {% endif %}
+            {% if flag_counts.get('WARNING', 0) > 0 %}
+            <span class="compliance-summary__item">
+                <span class="compliance-summary__dot compliance-summary__dot--warning"></span>
+                <span class="compliance-summary__value">{{ flag_counts['WARNING'] }}</span>
+                <span class="compliance-summary__label">Warning</span>
+            </span>
+            {% endif %}
+            {% if flag_counts.get('ADD_DISCLAIMER', 0) > 0 %}
+            <span class="compliance-summary__item">
+                <span class="compliance-summary__dot compliance-summary__dot--add-disclaimer"></span>
+                <span class="compliance-summary__value">{{ flag_counts['ADD_DISCLAIMER'] }}</span>
+                <span class="compliance-summary__label">Disclaimer</span>
+            </span>
+            {% endif %}
+            <span class="compliance-summary__total">{{ total_flags }} total flags</span>
+        </div>
+        {% else %}
+        <span class="compliance-summary__title">Compliance Scan Complete — No flags found</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% for section in sections %}
+    <div class="draft-section review-section{% if section.section_name == 'perspective' %} draft-section--perspective{% endif %}" id="section-{{ section.id }}">
+        <div class="draft-section__header">
+            <h2 class="draft-section__heading">{{ display_names.get(section.section_name, section.section_name) }}</h2>
+            <div class="draft-section__meta-right">
+                {% if section.flags %}
+                <span class="draft-section__flag-count">{{ section.flags|length }} flags</span>
+                {% endif %}
+                <span class="draft-section__word-count">{{ section.word_count }} words</span>
+            </div>
+        </div>
+        {% if section.section_name == 'perspective' %}
+        <p class="draft-section__placeholder-note">Partner commentary — to be written by Francisco or Juliana</p>
+        {% endif %}
+        <div class="draft-section__content">
+            {% if section.annotated_content %}
+                {% for paragraph in section.annotated_content.split('\n\n') %}
+                    {% if paragraph.strip() %}
+                    <p>{{ paragraph.strip() | safe }}</p>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                {% for paragraph in section.content.split('\n\n') %}
+                    {% if paragraph.strip() %}
+                    <p>{{ paragraph.strip() }}</p>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        {% if section.flags %}
+        <div class="review-section__flags">
+            {% for flag in section.flags %}
+            <div id="flag-{{ flag.id }}">
+                {% include "partials/flag_card.html" %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not sections %}
+    <div class="empty-state">
+        <p class="empty-state__text">No draft sections found for this edition.</p>
+    </div>
+    {% endif %}
+
+    {% if disclaimers is defined and disclaimers %}
+    <div class="disclaimers-section">
+        <h3 class="disclaimers-section__title">Required Disclaimers</h3>
+        {% for disclaimer in disclaimers %}
+        <div class="disclaimer">
+            <span class="disclaimer__label">{{ disclaimer.name|replace('_', ' ') }}</span>
+            <p class="disclaimer__text">{{ disclaimer.text }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="review-footer">
+        <div id="approve-button">
+            {% include "partials/approve_button.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% if can_approve %}
+<button class="btn btn--full btn--approve"
+        hx-post="/api/edition/{{ edition_id }}/approve"
+        hx-swap="innerHTML"
+        hx-target="#approve-button">
+    Approve Edition
+</button>
+{% elif edition_status == 'approved' %}
+<div class="approve-status approve-status--approved">
+    Edition approved by {{ approved_by }}
+</div>
+{% else %}
+<button class="btn btn--full btn--disabled" disabled>
+    Approve Edition ({{ blocking_count }} blocking flag{{ 's' if blocking_count != 1 else '' }} remaining)
+</button>
+{% endif %}

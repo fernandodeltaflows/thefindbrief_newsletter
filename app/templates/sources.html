@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Edition #{{ edition.id }} Sources — The Find Brief{% endblock %}
+
+{% block content %}
+<div class="sources">
+    <div class="sources-header">
+        <div>
+            <h1 class="sources-header__title">Edition #{{ edition.id }} — Sources</h1>
+            <div class="sources-header__meta">
+                <span>Created: {{ edition.created_at }}</span>
+                <span class="edition-card__status edition-card__status--{{ edition.status }}">{{ edition.status }}</span>
+                <span>{{ total_count }} articles</span>
+            </div>
+        </div>
+        <div class="sources-header__actions">
+            <a href="/draft/{{ edition.id }}" class="btn btn--secondary">View Draft</a>
+            {% if edition.status in ('reviewing', 'approved') %}
+            <a href="/review/{{ edition.id }}" class="btn btn--secondary">Review</a>
+            {% endif %}
+            <a href="/" class="btn">Back to Dashboard</a>
+        </div>
+    </div>
+
+    {% if stats.total > 0 %}
+    <div class="stats-bar">
+        <div class="stats-bar__item">
+            <span class="stats-bar__value">{{ stats.total }}</span>
+            <span class="stats-bar__label">Total</span>
+        </div>
+        <div class="stats-bar__item">
+            <span class="stats-bar__value">{{ "%.2f"|format(stats.avg_score) }}</span>
+            <span class="stats-bar__label">Avg Score</span>
+        </div>
+        <div class="stats-bar__item">
+            <span class="stats-bar__value tier-badge tier-badge--1">{{ stats.tier_1 }}</span>
+            <span class="stats-bar__label">Tier 1</span>
+        </div>
+        <div class="stats-bar__item">
+            <span class="stats-bar__value tier-badge tier-badge--2">{{ stats.tier_2 }}</span>
+            <span class="stats-bar__label">Tier 2</span>
+        </div>
+        <div class="stats-bar__item">
+            <span class="stats-bar__value tier-badge tier-badge--3">{{ stats.tier_3 }}</span>
+            <span class="stats-bar__label">Tier 3</span>
+        </div>
+        <div class="stats-bar__item">
+            <span class="stats-bar__value">{{ stats.paywalled }}</span>
+            <span class="stats-bar__label">Paywalled</span>
+        </div>
+        <div class="stats-bar__item">
+            <span class="stats-bar__value">{{ stats.duplicates }}</span>
+            <span class="stats-bar__label">Duplicates</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for source_name, articles in sources.items() %}
+    <section class="source-group">
+        <div class="source-group__title">
+            <h2>
+                <span class="source-badge source-badge--{{ source_name }}">{{ source_name }}</span>
+            </h2>
+            <span class="source-group__count">{{ articles|length }} articles</span>
+        </div>
+        <div class="source-group__list">
+            {% for article in articles %}
+            <div class="card article-card{% if article.is_duplicate %} article-card--duplicate{% endif %}">
+                <div class="article-card__title">
+                    {% if article.is_duplicate %}<s>{% endif %}
+                    {% if article.url %}
+                    <a href="{{ article.url }}" target="_blank" rel="noopener">{{ article.title }}</a>
+                    {% else %}
+                    {{ article.title }}
+                    {% endif %}
+                    {% if article.is_duplicate %}</s>{% endif %}
+                </div>
+                <div class="article-card__meta">
+                    <span class="tier-badge tier-badge--{{ article.source_tier }}">Tier {{ article.source_tier }}</span>
+                    {% if article.relevance_category %}
+                    <span class="relevance-tag relevance-tag--{{ article.relevance_category }}">{{ article.relevance_category }}</span>
+                    {% endif %}
+                    <span class="quality-score quality-score--{{ 'high' if article.quality_score > 0.7 else ('mid' if article.quality_score > 0.4 else 'low') }}">{{ "%.2f"|format(article.quality_score) }}</span>
+                    {% if article.is_paywalled %}
+                    <span class="label--paywalled">Paywalled</span>
+                    {% endif %}
+                    {% if article.is_duplicate %}
+                    <span class="label--duplicate">Duplicate</span>
+                    {% elif article.quality_score == 0.0 and article.url %}
+                    <span class="label--dead-link">Dead Link</span>
+                    {% endif %}
+                </div>
+                {% if article.raw_snippet %}
+                <p class="article-card__snippet">{{ article.raw_snippet[:300] }}{% if article.raw_snippet|length > 300 %}...{% endif %}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+
+    {% if not sources %}
+    <div class="empty-state">
+        <p class="empty-state__text">No articles found for this edition.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

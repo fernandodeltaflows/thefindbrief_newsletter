@@ -1,0 +1,47 @@
+{% if flag.is_resolved %}
+<div class="flag-card flag-card--resolved flag-card--{{ flag.severity|lower|replace('_', '-') }}">
+    <div class="flag-card__header">
+        <span class="flag-card__severity flag-card__severity--{{ flag.severity|lower|replace('_', '-') }}">
+            <span class="flag-card__severity-dot"></span>
+            {{ flag.severity|replace('_', ' ') }}
+        </span>
+        <span class="flag-card__pass">Pass {{ flag.pass_number }}</span>
+        <span class="flag-card__resolved-badge">Resolved</span>
+    </div>
+    <div class="flag-card__rule">{{ flag.rule_reference }}</div>
+    <div class="flag-card__explanation">{{ flag.explanation }}</div>
+    {% if flag.matched_text %}
+    <div class="flag-card__matched">"{{ flag.matched_text }}"</div>
+    {% endif %}
+    <div class="flag-card__resolution">
+        <span class="flag-card__resolver">{{ flag.resolved_by }} — {{ flag.resolved_at }}</span>
+        {% if flag.resolution_note %}
+        <p class="flag-card__note">{{ flag.resolution_note }}</p>
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<div class="flag-card flag-card--{{ flag.severity|lower|replace('_', '-') }}">
+    <div class="flag-card__header">
+        <span class="flag-card__severity flag-card__severity--{{ flag.severity|lower|replace('_', '-') }}">
+            <span class="flag-card__severity-dot"></span>
+            {{ flag.severity|replace('_', ' ') }}
+        </span>
+        <span class="flag-card__pass">Pass {{ flag.pass_number }}</span>
+    </div>
+    <div class="flag-card__rule">{{ flag.rule_reference }}</div>
+    <div class="flag-card__explanation">{{ flag.explanation }}</div>
+    <div class="flag-card__action">{{ flag.recommended_action }}</div>
+    {% if flag.matched_text %}
+    <div class="flag-card__matched">"{{ flag.matched_text }}"</div>
+    {% endif %}
+    <form class="flag-card__resolve-form"
+          hx-post="/api/flags/{{ flag.id }}/resolve"
+          hx-target="#flag-{{ flag.id }}"
+          hx-swap="innerHTML">
+        <textarea class="flag-card__textarea" name="resolution_note"
+                  placeholder="Resolution note (optional)..." rows="2"></textarea>
+        <button class="btn flag-card__resolve-btn" type="submit">Resolve</button>
+    </form>
+</div>
+{% endif %}

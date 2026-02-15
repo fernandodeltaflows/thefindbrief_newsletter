@@ -1,0 +1,13 @@
+services:
+  thefindbrief:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - thefindbrief-data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  thefindbrief-data:

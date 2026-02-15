@@ -1,0 +1,47 @@
+{% if error_message %}
+<div class="pipeline-status pipeline-status--error">
+    <p class="pipeline-status__error">{{ error_message }}</p>
+</div>
+{% elif status == 'generating' %}
+<div class="pipeline-status"
+     hx-get="/api/pipeline/status/{{ edition_id }}"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML">
+    <div class="pipeline-status__header">
+        <span class="pipeline-status__stage">
+            {% if pipeline_stage == 'starting' %}Starting pipeline...
+            {% elif pipeline_stage == 'retrieval' %}Retrieving sources...
+            {% elif pipeline_stage == 'verification' %}Verifying articles...
+            {% elif pipeline_stage == 'drafting' %}Drafting sections...
+            {% elif pipeline_stage == 'compliance' %}Running compliance scan...
+            {% elif pipeline_stage == 'review' %}Preparing for review...
+            {% else %}Processing...
+            {% endif %}
+        </span>
+        <span class="pipeline-status__count">{{ article_count }} articles retrieved</span>
+    </div>
+    <div class="progress-bar">
+        <div class="progress-bar__fill" style="width: {{ pipeline_progress }}%"></div>
+    </div>
+</div>
+{% elif status == 'reviewing' %}
+<div class="pipeline-status pipeline-status--complete">
+    <div class="pipeline-status__header">
+        <span class="pipeline-status__stage">Pipeline complete</span>
+        <span class="pipeline-status__count">{{ article_count }} articles retrieved</span>
+    </div>
+    <div class="progress-bar">
+        <div class="progress-bar__fill" style="width: 100%"></div>
+    </div>
+    <a href="/sources/{{ edition_id }}" class="pipeline-status__link">View Sources</a>
+    <a href="/draft/{{ edition_id }}" class="pipeline-status__link">View Draft</a>
+    <a href="/review/{{ edition_id }}" class="pipeline-status__link pipeline-status__link--primary">Review & Approve</a>
+</div>
+{% elif status == 'error' %}
+<div class="pipeline-status pipeline-status--error">
+    <p class="pipeline-status__error">Pipeline encountered an error. Check logs for details.</p>
+    {% if article_count > 0 %}
+    <a href="/sources/{{ edition_id }}" class="pipeline-status__link">View {{ article_count }} retrieved articles</a>
+    {% endif %}
+</div>
+{% endif %}

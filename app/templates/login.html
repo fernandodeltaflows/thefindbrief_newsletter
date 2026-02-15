@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Log In — The Find Brief{% endblock %}
+
+{% block content %}
+<div class="login">
+    <div class="login__card card">
+        <h1 class="login__title">THE FIND BRIEF</h1>
+        <p class="login__subtitle">Cross-Border Real Estate Intelligence</p>
+        {% if error %}
+        <p class="error-message">{{ error }}</p>
+        {% endif %}
+        <form method="post" action="/login" class="login__form">
+            <div class="form-group">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" id="username" name="username" class="form-input" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn--full">Sign In</button>
+        </form>
+        <p class="login__footer">Securities offered through Finalis Securities LLC, Member FINRA/SIPC</p>
+    </div>
+</div>
+{% endblock %}
