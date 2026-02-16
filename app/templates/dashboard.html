@@ -6,10 +6,25 @@
 <div class="dashboard">
     <div class="dashboard__header">
         <h1 class="dashboard__welcome">Welcome, {{ user.display_name }}</h1>
+    </div>
+
+    <div class="dashboard__generate">
+        <div class="mode-selector">
+            <button type="button" class="mode-selector__btn mode-selector__btn--active" data-mode="auto">Auto</button>
+            <button type="button" class="mode-selector__btn" data-mode="guided">Guided</button>
+        </div>
+        <div class="editorial-brief" id="editorial-brief" style="display: none;">
+            <textarea name="editorial_brief" id="editorial-brief-input"
+                      class="editorial-brief__input"
+                      placeholder="e.g. Focus on Abu Dhabi sovereign wealth fund real estate allocations and Mexico nearshoring logistics boom"
+                      rows="3"></textarea>
+        </div>
+        <input type="hidden" name="mode" id="mode-input" value="auto">
         <button class="btn" id="generate-btn"
                 hx-post="/api/pipeline/run"
                 hx-target="#pipeline-status"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML"
+                hx-include="#mode-input, #editorial-brief-input">
             Generate New Edition
         </button>
     </div>
@@ -24,8 +39,14 @@
             <div class="card edition-card">
                 <div class="edition-card__header">
                     <span class="edition-card__id">Edition #{{ edition.id }}</span>
-                    <span class="edition-card__status edition-card__status--{{ edition.status }}">{{ edition.status }}</span>
+                    <div class="edition-card__badges">
+                        <span class="edition-card__mode edition-card__mode--{{ edition.generation_mode or 'auto' }}">{{ edition.generation_mode or 'auto' }}</span>
+                        <span class="edition-card__status edition-card__status--{{ edition.status }}">{{ edition.status }}</span>
+                    </div>
                 </div>
+                {% if edition.editorial_brief %}
+                <div class="edition-card__brief">{{ edition.editorial_brief }}</div>
+                {% endif %}
                 <div class="edition-card__meta">
                     <span>Created: {{ edition.created_at }}</span>
                     {% if edition.approved_by %}

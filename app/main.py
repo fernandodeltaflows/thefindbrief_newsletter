@@ -81,7 +81,7 @@ async def dashboard(request: Request, user: dict = Depends(get_current_user)):
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, status, created_at, approved_by, approved_at FROM editions ORDER BY created_at DESC"
+            "SELECT id, status, created_at, approved_by, approved_at, generation_mode, editorial_brief FROM editions ORDER BY created_at DESC"
         )
         editions = await cursor.fetchall()
     finally:
@@ -95,7 +95,18 @@ async def dashboard(request: Request, user: dict = Depends(get_current_user)):
 
 
 @app.post("/api/pipeline/run")
-async def pipeline_run(request: Request, user: dict = Depends(get_current_user)):
+async def pipeline_run(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    mode: str = Form(default="auto"),
+    editorial_brief: str = Form(default=""),
+):
+    # Sanitize: only keep brief in guided mode, strip whitespace
+    editorial_brief = editorial_brief.strip() if mode == "guided" else None
+    if not editorial_brief:
+        editorial_brief = None
+        mode = "auto"
+
     db = await get_db()
     try:
         # Concurrent pipeline guard
@@ -112,7 +123,9 @@ async def pipeline_run(request: Request, user: dict = Depends(get_current_user))
 
         # Create new edition
         cursor = await db.execute(
-            "INSERT INTO editions (status, pipeline_stage, pipeline_progress) VALUES ('generating', 'starting', 0)"
+            "INSERT INTO editions (status, pipeline_stage, pipeline_progress, generation_mode, editorial_brief) "
+            "VALUES ('generating', 'starting', 0, ?, ?)",
+            (mode, editorial_brief),
         )
         await db.commit()
         edition_id = cursor.lastrowid
@@ -127,7 +140,7 @@ async def pipeline_run(request: Request, user: dict = Depends(get_current_user))
         await db.close()
 
     # Fire off pipeline as background task
-    asyncio.create_task(run_pipeline(edition_id))
+    asyncio.create_task(run_pipeline(edition_id, editorial_brief=editorial_brief))
 
     return templates.TemplateResponse(
         request,

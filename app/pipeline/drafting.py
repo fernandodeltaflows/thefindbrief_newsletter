@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # ============================= PUBLIC API ==================================
 
 
-async def run_drafting(edition_id: int) -> None:
+async def run_drafting(edition_id: int, *, editorial_brief: str | None = None) -> None:
     """Generate all newsletter sections for an edition using Gemini.
 
     Sections are generated sequentially to respect rate limits.
@@ -68,7 +68,7 @@ async def run_drafting(edition_id: int) -> None:
     for section_name in SECTION_ORDER:
         if section_name != "perspective" and gemini_call_count > 0:
             await asyncio.sleep(2)
-        await _generate_section(edition_id, section_name, model, all_articles)
+        await _generate_section(edition_id, section_name, model, all_articles, editorial_brief)
         if section_name != "perspective":
             gemini_call_count += 1
 
@@ -84,6 +84,7 @@ async def _generate_section(
     section_name: str,
     model: genai.GenerativeModel,
     all_articles: list[dict],
+    editorial_brief: str | None = None,
 ) -> None:
     """Generate and store a single newsletter section."""
 
@@ -115,6 +116,14 @@ async def _generate_section(
     prompt = prompt_template.format(articles_context=articles_context)
     if not section_articles:
         prompt += NO_ARTICLES_ADDENDUM
+
+    # Prepend editorial direction for guided mode
+    if editorial_brief:
+        prompt = (
+            f"EDITORIAL DIRECTION: {editorial_brief}\n"
+            "Prioritize this theme in your analysis while maintaining balanced coverage.\n\n"
+            + prompt
+        )
 
     logger.info(
         "Edition %d [%s]: generating (%d articles in context)",

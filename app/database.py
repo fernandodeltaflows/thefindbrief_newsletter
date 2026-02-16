@@ -34,7 +34,9 @@ async def init_db() -> None:
                 approved_by TEXT,
                 approved_at TIMESTAMP,
                 pipeline_stage TEXT,
-                pipeline_progress INTEGER DEFAULT 0
+                pipeline_progress INTEGER DEFAULT 0,
+                generation_mode TEXT DEFAULT 'auto',
+                editorial_brief TEXT
             );
 
             CREATE TABLE IF NOT EXISTS articles (
@@ -93,6 +95,20 @@ async def init_db() -> None:
             """
         )
         await db.commit()
+
+        # Migrate existing DBs — add columns that may not exist yet
+        for col, definition in [
+            ("generation_mode", "TEXT DEFAULT 'auto'"),
+            ("editorial_brief", "TEXT"),
+        ]:
+            try:
+                await db.execute(
+                    f"ALTER TABLE editions ADD COLUMN {col} {definition}"
+                )
+            except Exception:
+                pass  # Column already exists
+        await db.commit()
+
         logger.info("Database initialized at %s", _db_path)
     finally:
         await db.close()

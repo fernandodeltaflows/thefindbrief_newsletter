@@ -10,6 +10,20 @@ document.body.addEventListener('htmx:beforeRequest', function (e) {
     }
 });
 
+// ---- Mode Selector (Auto / Guided) ----
+
+document.body.addEventListener('click', function (e) {
+    var btn = e.target.closest('.mode-selector__btn');
+    if (!btn) return;
+    var mode = btn.getAttribute('data-mode');
+    document.querySelectorAll('.mode-selector__btn').forEach(function (b) {
+        b.classList.remove('mode-selector__btn--active');
+    });
+    btn.classList.add('mode-selector__btn--active');
+    document.getElementById('mode-input').value = mode;
+    document.getElementById('editorial-brief').style.display = mode === 'guided' ? 'block' : 'none';
+});
+
 // ---- Compliance Popover Logic ----
 
 (function () {

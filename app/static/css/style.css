@@ -262,6 +262,70 @@ a:hover {
     font-weight: 400;
 }
 
+/* ---- Mode Selector ---- */
+
+.dashboard__generate {
+    margin-bottom: 2rem;
+}
+
+.mode-selector {
+    display: flex;
+    gap: 0;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    width: fit-content;
+}
+
+.mode-selector__btn {
+    padding: 0.5rem 1.25rem;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: none;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.mode-selector__btn--active {
+    background: var(--accent-gold);
+    color: var(--bg-primary);
+}
+
+/* ---- Editorial Brief ---- */
+
+.editorial-brief {
+    margin-bottom: 1rem;
+}
+
+.editorial-brief__input {
+    width: 100%;
+    max-width: 600px;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.editorial-brief__input::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+.editorial-brief__input:focus {
+    outline: none;
+    border-color: var(--accent-gold);
+}
+
 /* ---- Edition Cards ---- */
 
 .edition-list {
@@ -303,6 +367,36 @@ a:hover {
 .edition-card__status--approved {
     color: var(--success);
     background-color: rgba(74, 158, 109, 0.1);
+}
+
+.edition-card__badges {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.edition-card__mode {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    color: var(--text-secondary);
+    background-color: rgba(160, 160, 176, 0.1);
+}
+
+.edition-card__mode--guided {
+    color: var(--accent-gold);
+    background-color: rgba(196, 163, 90, 0.1);
+}
+
+.edition-card__brief {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-style: italic;
+    margin-top: 0.25rem;
+    line-height: 1.4;
 }
 
 .edition-card__meta {

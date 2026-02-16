@@ -1,12 +1,15 @@
 import asyncio
+import json
 import logging
 import re
 from datetime import datetime, timedelta
 
+import google.generativeai as genai
 import httpx
 
 from app.config import settings
 from app.database import get_db
+from app.pipeline.gemini_utils import call_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +76,32 @@ _URL_RE = re.compile(r"https?://[^\s\)\]\>,\"']+")
 # ============================= PUBLIC API ==================================
 
 
-async def run_retrieval(edition_id: int) -> int:
+async def run_retrieval(edition_id: int, *, editorial_brief: str | None = None) -> int:
     """Fetch articles from all sources concurrently and store in DB.
 
     Returns total number of articles stored.
+    When editorial_brief is provided, Gemini generates targeted search queries
+    instead of using the hardcoded defaults.
     """
+    # Determine query lists
+    if editorial_brief:
+        try:
+            perplexity_queries, serpapi_queries = await _generate_guided_queries(editorial_brief)
+            logger.info(
+                "Guided mode: generated %d Perplexity + %d SerpAPI queries",
+                len(perplexity_queries), len(serpapi_queries),
+            )
+        except Exception:
+            logger.exception("Failed to generate guided queries, falling back to auto")
+            perplexity_queries = _PERPLEXITY_QUERIES
+            serpapi_queries = _SERPAPI_QUERIES
+    else:
+        perplexity_queries = _PERPLEXITY_QUERIES
+        serpapi_queries = _SERPAPI_QUERIES
+
     tasks = [
-        _fetch_perplexity(edition_id),
-        _fetch_serpapi(edition_id),
+        _fetch_perplexity(edition_id, queries=perplexity_queries),
+        _fetch_serpapi(edition_id, queries=serpapi_queries),
         _fetch_edgar(edition_id),
         _fetch_fred(edition_id),
     ]
@@ -105,6 +126,59 @@ async def run_retrieval(edition_id: int) -> int:
 
     logger.warning("Edition %d: no articles retrieved from any source", edition_id)
     return 0
+
+
+# ============================= GUIDED QUERY GENERATION ====================
+
+
+async def _generate_guided_queries(
+    brief: str,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Use Gemini to parse an editorial brief into search queries.
+
+    Returns (perplexity_queries, serpapi_queries) where each is a list of
+    (query_text, relevance_category) tuples.
+    """
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(
+        model_name="gemini-2.5-flash",
+        generation_config=genai.GenerationConfig(
+            temperature=0.3, max_output_tokens=2048
+        ),
+    )
+
+    prompt = (
+        "You are a research query generator for a cross-border real estate capital newsletter.\n\n"
+        f"Editorial direction: {brief}\n\n"
+        "Generate exactly 5 search queries for Perplexity (deep research) and 4 search queries for "
+        "Google News (SerpAPI). Each query should have a relevance_category from this list: "
+        "'macro', 'regional', 'deals', or 'regulatory'.\n\n"
+        "Return valid JSON only, no markdown fences:\n"
+        '{"perplexity": [{"query": "...", "category": "..."}, ...], '
+        '"serpapi": [{"query": "...", "category": "..."}, ...]}'
+    )
+
+    response = await call_with_retry(
+        lambda: model.generate_content_async(prompt),
+        label="Guided query generation",
+    )
+
+    raw = response.text.strip()
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+
+    data = json.loads(raw)
+
+    perplexity_queries = [
+        (item["query"], item["category"]) for item in data["perplexity"]
+    ]
+    serpapi_queries = [
+        (item["query"], item["category"]) for item in data["serpapi"]
+    ]
+
+    return perplexity_queries, serpapi_queries
 
 
 # ============================= STORAGE =====================================
@@ -245,11 +319,15 @@ def _parse_perplexity_response(
     return articles
 
 
-async def _fetch_perplexity(edition_id: int) -> list[dict]:
+async def _fetch_perplexity(
+    edition_id: int, *, queries: list[tuple[str, str]] | None = None
+) -> list[dict]:
     """Fetch articles from Perplexity API."""
     if not settings.perplexity_api_key:
         logger.warning("Perplexity API key not set — skipping")
         return []
+
+    query_list = queries if queries is not None else _PERPLEXITY_QUERIES
 
     articles: list[dict] = []
     async with httpx.AsyncClient(
@@ -261,18 +339,18 @@ async def _fetch_perplexity(edition_id: int) -> list[dict]:
     ) as client:
         tasks = [
             _perplexity_single_query(client, query, category, edition_id)
-            for query, category in _PERPLEXITY_QUERIES
+            for query, category in query_list
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                query_text = _PERPLEXITY_QUERIES[i][0]
+                query_text = query_list[i][0]
                 logger.error("Perplexity query failed (%s): %s", query_text, result)
                 continue
             articles.extend(result)
 
-    logger.info("Perplexity: %d articles from %d queries", len(articles), len(_PERPLEXITY_QUERIES))
+    logger.info("Perplexity: %d articles from %d queries", len(articles), len(query_list))
     return articles
 
 
@@ -317,28 +395,32 @@ async def _serpapi_single_query(
     return articles
 
 
-async def _fetch_serpapi(edition_id: int) -> list[dict]:
+async def _fetch_serpapi(
+    edition_id: int, *, queries: list[tuple[str, str]] | None = None
+) -> list[dict]:
     """Fetch articles from SerpAPI Google News."""
     if not settings.serpapi_api_key:
         logger.warning("SerpAPI key not set — skipping")
         return []
 
+    query_list = queries if queries is not None else _SERPAPI_QUERIES
+
     articles: list[dict] = []
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         tasks = [
             _serpapi_single_query(client, query, category, edition_id)
-            for query, category in _SERPAPI_QUERIES
+            for query, category in query_list
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                query_text = _SERPAPI_QUERIES[i][0]
+                query_text = query_list[i][0]
                 logger.error("SerpAPI query failed (%s): %s", query_text, result)
                 continue
             articles.extend(result)
 
-    logger.info("SerpAPI: %d articles from %d queries", len(articles), len(_SERPAPI_QUERIES))
+    logger.info("SerpAPI: %d articles from %d queries", len(articles), len(query_list))
     return articles
 
 

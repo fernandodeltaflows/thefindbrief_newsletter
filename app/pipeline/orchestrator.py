@@ -48,7 +48,9 @@ async def _log_audit(
         await db.close()
 
 
-async def run_pipeline(edition_id: int) -> None:
+async def run_pipeline(
+    edition_id: int, *, editorial_brief: str | None = None
+) -> None:
     """Run the full pipeline for an edition. Called as a background task."""
     try:
         # Layer 1 — Retrieval
@@ -57,7 +59,7 @@ async def run_pipeline(edition_id: int) -> None:
         )
         await _log_audit(edition_id, "pipeline_started")
 
-        article_count = await run_retrieval(edition_id)
+        article_count = await run_retrieval(edition_id, editorial_brief=editorial_brief)
         await _log_audit(
             edition_id,
             "retrieval_completed",
@@ -76,7 +78,7 @@ async def run_pipeline(edition_id: int) -> None:
         await _update_edition(
             edition_id, pipeline_stage="drafting", pipeline_progress=55
         )
-        await run_drafting(edition_id)
+        await run_drafting(edition_id, editorial_brief=editorial_brief)
         await _log_audit(edition_id, "drafting_completed")
         await _update_edition(edition_id, pipeline_progress=70)
 
