@@ -17,7 +17,7 @@ The newsletter covers cross-border real estate capital flows between GCC (Gulf C
 | **Backend** | Python 3.11+ / FastAPI | Async throughout. Single application serves both API and frontend. |
 | **Frontend** | Jinja2 templates + HTMX | Server-rendered. HTMX handles all reactivity (pipeline progress, live updates). |
 | **Database** | SQLite | Single file at `data/thefindbrief.db`. No ORM — use raw SQL or lightweight wrapper. |
-| **LLM** | Google Gemini 1.5 Flash | Via `google-generativeai` Python SDK. Used for drafting and compliance Pass 2. |
+| **LLM** | Google Gemini 2.5 Flash | Via `google-generativeai` Python SDK. Used for drafting and compliance Pass 2. |
 | **Styling** | Custom CSS | Hand-written. No Tailwind, no Bootstrap, no CSS framework. |
 | **Auth** | Session cookies (signed, `itsdangerous`) | Two hardcoded accounts from `.env`. No user table. |
 | **Deployment** | Docker → Easypanel on VPS | Single container. SQLite persisted via Docker volume. |
@@ -29,18 +29,21 @@ The newsletter covers cross-border real estate capital flows between GCC (Gulf C
 ```
 the-find-brief/
 ├── app/
-│   ├── main.py                  # FastAPI app entry + route definitions
+│   ├── __init__.py
+│   ├── main.py                  # FastAPI app entry + route definitions (~718 lines)
 │   ├── auth.py                  # Login/logout, session management, route protection
 │   ├── config.py                # API keys, partner credentials, settings (from .env)
 │   ├── database.py              # SQLite setup + table creation + query helpers
 │   │
 │   ├── pipeline/
+│   │   ├── __init__.py
 │   │   ├── orchestrator.py      # Runs the full pipeline step by step
-│   │   ├── retrieval.py         # Layer 1: Perplexity, SerpAPI, EDGAR, FRED
+│   │   ├── retrieval.py         # Layer 1: Perplexity, SerpAPI, FRED
 │   │   ├── verification.py      # Layer 2: Tier scoring, dedup, link check
 │   │   ├── drafting.py          # Layer 3: Gemini drafting with voice profile
 │   │   ├── compliance.py        # Layer 4: Regex + Gemini compliance scan
-│   │   └── prompts.py           # All LLM prompts (voice profile, section templates, compliance)
+│   │   ├── prompts.py           # All LLM prompts (voice profile, section templates, compliance)
+│   │   └── gemini_utils.py      # Retry logic for Gemini API rate limiting
 │   │
 │   ├── compliance/
 │   │   └── compliance_framework.md  # Regulatory reference — FINRA 2210 full text + supporting rules
@@ -49,24 +52,24 @@ the-find-brief/
 │   │   ├── base.html            # Layout shell (dark theme, nav, branding)
 │   │   ├── login.html           # Login page
 │   │   ├── dashboard.html       # Main dashboard — trigger pipeline + edition history
-│   │   ├── sources.html         # Retrieved articles viewer with scoring
-│   │   ├── review.html          # Newsletter review + compliance annotations + approve
+│   │   ├── sources.html         # Retrieved articles viewer with quality scores
+│   │   ├── draft.html           # Section review with compliance annotations
+│   │   ├── review.html          # Final review before approval
 │   │   └── partials/            # HTMX partial templates
-│   │       ├── pipeline_status.html
-│   │       ├── article_card.html
-│   │       ├── section_draft.html
-│   │       └── compliance_flag.html
+│   │       ├── pipeline_status.html   # Real-time generation progress bar
+│   │       ├── flag_card.html         # Compliance flag display + resolve form
+│   │       └── approve_button.html    # Edition approval button (conditional)
 │   │
 │   └── static/
-│       ├── css/style.css        # All custom styles
-│       ├── js/app.js            # Minimal JS (HTMX does the heavy lifting)
-│       └── img/logo.svg         # The Find Capital logo
+│       ├── css/style.css        # All custom styles (~1000+ lines)
+│       └── js/app.js            # Minimal JS — mode selector, popovers, button guards
 │
 ├── data/
 │   └── thefindbrief.db          # SQLite (created at runtime)
 │
 ├── requirements.txt
 ├── .env.example
+├── .gitignore
 ├── Dockerfile
 ├── docker-compose.yml
 ├── CLAUDE.md                    # This file
@@ -87,9 +90,24 @@ the-find-brief/
 
 ### Routes
 - Page routes return `TemplateResponse` (Jinja2).
-- API routes under `/api/` return JSON.
-- Auth: every route except `/login` and `/static` requires a valid session. Use a dependency or middleware.
+- API routes under `/api/` return `HTMLResponse` (HTMX partials), not JSON. HTMX swaps these fragments directly into the page.
+- Auth: every route except `/login` and `/static` requires a valid session via `Depends(get_current_user)`.
 - The `/api/edition/{id}/approve` route must capture the logged-in partner's identity for the audit log.
+
+### Route Map
+| Method | Path | Returns | Purpose |
+|--------|------|---------|---------|
+| GET | `/login` | TemplateResponse | Login page |
+| POST | `/login` | Redirect / TemplateResponse | Form submission (sets signed cookie) |
+| GET | `/logout` | Redirect | Clear cookie, redirect to login |
+| GET | `/` | TemplateResponse | Dashboard (edition history, generation controls) |
+| GET | `/sources/{edition_id}` | TemplateResponse | Article viewer with source tier stats |
+| GET | `/draft/{edition_id}` | TemplateResponse | Section review with compliance annotations |
+| GET | `/review/{edition_id}` | TemplateResponse | Final review before approval |
+| POST | `/api/pipeline/run` | HTMLResponse | Start new edition generation |
+| GET | `/api/pipeline/status/{edition_id}` | HTMLResponse | Poll for pipeline progress |
+| POST | `/api/flags/{flag_id}/resolve` | HTMLResponse | Mark compliance flag resolved |
+| POST | `/api/edition/{edition_id}/approve` | HTMLResponse | Approve edition (audit logged) |
 
 ### Templates (Jinja2 + HTMX)
 - `base.html` is the layout shell. All pages extend it.
@@ -194,12 +212,14 @@ CREATE TABLE articles (
 
 CREATE TABLE editions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    status TEXT DEFAULT 'draft',    -- 'draft', 'reviewing', 'approved'
+    status TEXT DEFAULT 'draft',    -- 'draft', 'generating', 'reviewing', 'approved', 'error'
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     approved_by TEXT,               -- partner username who approved
     approved_at TIMESTAMP,
     pipeline_stage TEXT,            -- current stage during generation
-    pipeline_progress INTEGER DEFAULT 0
+    pipeline_progress INTEGER DEFAULT 0,
+    generation_mode TEXT DEFAULT 'auto',  -- 'auto' or 'guided'
+    editorial_brief TEXT            -- user-provided brief for guided mode queries
 );
 
 CREATE TABLE section_drafts (
@@ -247,7 +267,7 @@ CREATE TABLE audit_log (
 
 ### Critical: `compliance_framework.md`
 
-The file at `/Users/akira/Documents/0.- AAA AI Agency/1.- AI Agents/0.- Agents/0.- Customers/TheFindCapital/Demo/compliance_framework.md` is the regulatory reference. It contains:
+The file at `app/compliance/compliance_framework.md` is the regulatory reference. It contains:
 1. **FINRA Rule 2210 full text** — the binding rule. Newsletter = "retail communication" (25+ recipients).
 2. **SEC Regulation D summary** — general solicitation boundaries.
 3. **CFIUS summary** — cross-border investment review.
@@ -286,6 +306,22 @@ The model returns structured JSON with any additional flags not caught by regex.
 - **PERFORMANCE** (when data cited): "Performance data sourced from third-party reports and has not been independently verified by The Find Capital."
 - **CROSS-BORDER** (foreign investment flows): "Cross-border investments may be subject to CFIUS review, FATCA/FBAR reporting requirements, and other regulatory obligations."
 - **PRIVATE PLACEMENT** (fund activity): "Information based on publicly available sources and does not constitute an endorsement or solicitation."
+
+---
+
+## Generation Modes
+
+The pipeline supports two modes, selectable from the dashboard:
+
+### Auto Mode (default)
+- Uses hardcoded search queries in `retrieval.py` targeting cross-border RE capital flows, GCC/LATAM/US markets, macro conditions, and regulatory developments.
+- No user input required beyond clicking "Generate."
+
+### Guided Mode
+- Partner provides an **editorial brief** (free-text textarea) describing the focus for this edition.
+- The brief is passed to `retrieval.py` which uses Gemini to generate additional targeted search queries beyond the hardcoded set.
+- The brief is also stored in the `editions.editorial_brief` column for audit purposes.
+- Useful when partners want to cover a specific deal, event, or theme.
 
 ---
 
@@ -383,3 +419,69 @@ Total: ~1,200-1,600 words per edition.
 - **Do not add features not in the architecture doc.** This is a demo — scope is fixed.
 - **Do not skip the compliance scan.** Every draft runs through both passes before reaching review.
 - **Do not hardcode API keys.** Everything from `.env` via `config.py`.
+
+---
+
+## Development Workflow
+
+### Running Locally
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and configure environment
+cp .env.example .env
+# Edit .env with real API keys and passwords
+
+# Run the app
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Running with Docker
+```bash
+docker compose up --build
+```
+
+The SQLite database is created automatically at first startup via `database.py` schema initialization. WAL mode and foreign keys are enabled on every connection.
+
+### No Tests
+This is a working demo — no test suite exists. Manual testing via the browser UI.
+
+### No CI/CD
+Deployment is manual: Docker build → push to Easypanel on VPS.
+
+---
+
+## Dependencies (requirements.txt)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| fastapi | 0.115.6 | Web framework |
+| uvicorn | 0.34.0 | ASGI server |
+| jinja2 | 3.1.4 | Server-side templates |
+| aiosqlite | 0.20.0 | Async SQLite |
+| httpx | 0.28.1 | Async HTTP client |
+| itsdangerous | 2.2.0 | Signed session cookies |
+| google-generativeai | 0.8.3 | Gemini API SDK |
+| pydantic-settings | 2.7.1 | Settings from .env |
+| python-dotenv | 1.0.1 | .env file loading |
+| python-multipart | 0.0.20 | Form data parsing |
+
+---
+
+## Key Implementation Details
+
+### Gemini Rate Limiting
+`gemini_utils.py` provides retry logic for Gemini API calls — up to 3 retries with 15s/30s waits on rate limit (429) errors. The drafting step also inserts a 2-second delay between section generation calls.
+
+### Background Pipeline Execution
+Pipeline runs via `asyncio.create_task()` as a background task. The dashboard polls `/api/pipeline/status/{id}` via HTMX (`hx-trigger="every 2s"`) to show real-time progress.
+
+### Link Validation
+Verification uses async HTTP HEAD requests with a 10-concurrent semaphore to avoid overwhelming target servers. Paywall detection is domain-based (WSJ, FT, Bloomberg, Economist, etc.).
+
+### Deduplication
+Title similarity via `difflib.SequenceMatcher` with a 0.6 threshold. The lower-scoring duplicate is marked `is_duplicate=1`.
+
+### Approval Guard
+Edition approval is blocked server-side if any unresolved `BLOCK`-severity compliance flags exist. The approve button is conditionally rendered via the `approve_button.html` partial.
